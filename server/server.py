@@ -1,5 +1,6 @@
 import random
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -34,13 +35,21 @@ class User(BaseModel):
 @dataclass
 class Game:
     board: str
+    words: list[str]
     player1: User
     player2: User = field(default_factory=lambda: User(username=""))
-    player1_score: int = -1
-    player2_score: int = -1
+    player1_score: int = 0
+    player2_score: int = 0
+    player1_done: bool = False
+    player2_done: bool = False
     player1_found_words: list[str] = field(default_factory=list)
     player2_found_words: list[str] = field(default_factory=list)
-    
+
+
+DICT = wordhunt_cpp.Dictionary(
+    str((Path(__file__).resolve().parent.parent / "solver" / "words.txt").resolve())
+)
+
 
 games: dict[int, Game] = {}
 num_games = 0
@@ -51,12 +60,23 @@ class JoinableGame(BaseModel):
     host: str
 
 
+class SubmitResultsRequest(BaseModel):
+    username: str
+    words: list[str]
+
+
 @app.get(path="/create_game")
 def create_game(user: Annotated[User, Depends()]) -> int:  # game_id 
     global num_games
     game_id = num_games
-    board: str = wordhunt_cpp.generate_board(random.randint(0, 100000000))
-    games[game_id] = Game(board=board, player1=user)
+    words: list[str] = []
+    total_score = 0
+    board: str = ""
+    # Keep generating until the board's max score exceeds the threshold.
+    while total_score <= 300_000:
+        board = wordhunt_cpp.generate_board(random.randint(0, 100000000))
+        words, total_score = DICT.solve(board)
+    games[game_id] = Game(board=board, words=words, player1=user)
     num_games += 1
     return game_id
 
@@ -87,6 +107,39 @@ def join_game(game_id: int, user: User) -> Game:
 @app.get(path="/game")
 def get_game(game_id: int) -> Game | None:
     return games.get(game_id)
+
+
+def _score_words(words: list[str]) -> int:
+    return sum(wordhunt_cpp.word_score(len(w)) for w in words)
+
+
+@app.post(path="/submit_results")
+def submit_results(game_id: int, payload: SubmitResultsRequest) -> Game:
+    game = games.get(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    normalized_words = []
+    seen = set()
+    for w in payload.words:
+        w_norm = "".join(ch for ch in w.lower() if ch.isalpha())
+        if len(w_norm) < 3 or w_norm in seen:
+            continue
+        seen.add(w_norm)
+        normalized_words.append(w_norm)
+
+    if payload.username == game.player1.username:
+        game.player1_found_words = normalized_words
+        game.player1_score = _score_words(normalized_words)
+        game.player1_done = True
+    elif payload.username == game.player2.username:
+        game.player2_found_words = normalized_words
+        game.player2_score = _score_words(normalized_words)
+        game.player2_done = True
+    else:
+        raise HTTPException(status_code=400, detail="Username does not match this game")
+
+    return game
 
 
 if __name__ == "__main__":
