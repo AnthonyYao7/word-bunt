@@ -37,7 +37,8 @@ export default function GameScreen() {
   const [ended, setEnded] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const LINE_THICKNESS = 4;
-  const CELL_SCALE = 0.75; // Adjust this to change cell size (0.85 = 85% of grid space)
+  const CELL_HITBOX_SCALE = 0.75; // Hitbox size for touch detection
+  const CELL_VISUAL_SCALE = 0.95;  // Visual size of the tiles
 
   const API_BASE =
     process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
@@ -115,10 +116,10 @@ export default function GameScreen() {
       
       if (col < 0 || col > 3 || row < 0 || row > 3) return -1;
       
-      // Check if touch is within the actual scaled cell bounds
+      // Check if touch is within the HITBOX (not visual) bounds
       const cellCenterX = col * cellSize + cellSize / 2;
       const cellCenterY = row * cellSize + cellSize / 2;
-      const scaledCellSize = cellSize * CELL_SCALE;
+      const scaledCellSize = cellSize * CELL_HITBOX_SCALE;
       
       const distFromCenterX = Math.abs(relativeX - cellCenterX);
       const distFromCenterY = Math.abs(relativeY - cellCenterY);
@@ -341,22 +342,22 @@ export default function GameScreen() {
       {error && <Text style={styles.error}>{error}</Text>}
       {loading && <ActivityIndicator color="#22d3ee" />}
 
-      {lastResult && (
-        <View
-          style={[
-            styles.resultBanner,
-            lastResult.valid ? styles.resultValid : styles.resultInvalid,
-          ]}
-        >
-          <Text style={styles.resultText}>
-            {lastResult.valid
+      <View
+        style={[
+          styles.resultBanner,
+          lastResult?.valid ? styles.resultValid : styles.resultInvalid,
+        ]}
+      >
+        <Text style={styles.resultText}>
+          {lastResult
+            ? lastResult.valid
               ? lastResult.already
                 ? `${lastResult.word.toUpperCase()} was already found (+0)`
                 : `Got ${lastResult.word.toUpperCase()} (+${lastResult.points} pts)`
-              : `${lastResult.word.toUpperCase()} is not a valid word`}
-          </Text>
-        </View>
-      )}
+              : `${lastResult.word.toUpperCase()} is not a valid word`
+            : "Trace words to start scoring!"}
+        </Text>
+      </View>
 
       <View
         ref={gridRef}
@@ -387,8 +388,8 @@ export default function GameScreen() {
                 styles.cell,
                 isActive && styles.cellActive,
                 {
-                  width: `${CELL_SCALE * 100}%`,
-                  height: `${CELL_SCALE * 100}%`,
+                  width: `${CELL_VISUAL_SCALE * 100}%`,
+                  height: `${CELL_VISUAL_SCALE * 100}%`,
                 }
               ]}>
                 <Text style={styles.cellText}>{letter.toUpperCase()}</Text>
@@ -516,7 +517,7 @@ const styles = StyleSheet.create({
   cell: {
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
+    borderRadius: 8,
     backgroundColor: "#eaf6ef",
     borderWidth: 1,
     borderColor: "#9ac3a5",
@@ -527,7 +528,7 @@ const styles = StyleSheet.create({
   },
   cellText: {
     color: "#0f172a",
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "700",
   },
   line: {
